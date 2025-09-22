@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ user.username }} - Профиль</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='general.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='profile.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="/">myTube</a>
+        <div class="auth">
+            {% if session.user_id %}
+                <a href="{{ url_for('profile', username=db.get_user(session.user_id)['username']) }}">Профиль</a>
+                <a href="{{ url_for('upload') }}">Загрузить</a>
+                <a href="{{ url_for('logout') }}">Выйти</a>
+            {% else %}
+                <a href="{{ url_for('login') }}">Войти</a>
+                <a href="{{ url_for('register') }}">Зарегистрироваться</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="profile-container">
+        <div class="profile-header">
+            {% if user.avatar %}
+                <img src="{{ url_for('static', filename='uploads/' + user.avatar) }}" alt="Аватар" class="avatar">
+            {% else %}
+                <img src="{{ url_for('static', filename='default_avatar.png') }}" alt="Аватар" class="avatar">
+            {% endif %}
+            <h1>{{ user.name }}</h1>
+            <p class="username">@{{ user.username }}</p>
+            <p class="description">{{ user.description }}</p>
+            <p>Подписчиков: {{ subscriber_count }}</p>
+
+            {% if session.user_id and session.user_id != user.id %}
+                {% if is_subscribed %}
+                    <form action="{{ url_for('unsubscribe', profile_id=user.id) }}" method="post">
+                        <button type="submit">Отписаться</button>
+                    </form>
+                {% else %}
+                    <form action="{{ url_for('subscribe', profile_id=user.id) }}" method="post">
+                        <button type="submit">Подписаться</button>
+                    </form>
+                {% endif %}
+            {% endif %}
+        </div>
+
+        <div class="profile-videos">
+            <h2>Видео пользователя</h2>
+            {% if videos %}
+                <div class="videos">
+                    {% for video in videos %}
+                        <div class="video">
+                            <a href="/{{ video.id|string }}">
+                                <img src="{{ url_for('static', filename='uploads/' + video.thumbnail) }}" alt="">
+                                <h2 class="name">{{ video.name }}</h2>
+                            </a>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p>У пользователя пока нет видео.</p>
+            {% endif %}
+        </div>
+    </div>
+<div class="footer">
+    © {{ year }} Для разработчиков
+</div>
+</body>
+</html>

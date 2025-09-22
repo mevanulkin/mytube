@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Регистрация</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='general.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+</head>
+<body>
+    <div class="auth-container-new">
+        <h2>Регистрация в MyTube</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flashes">
+                    {% for category, message in messages %}
+                        <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        <form method="post" enctype="multipart/form-data">
+            <label for="name">Имя</label>
+            <input type="text" id="name" name="name" placeholder="Имя" required>
+            <label for="username">Имя пользователя</label>
+            <input type="text" id="username" name="username" placeholder="Имя пользователя" required>
+            <label for="password">Пароль</label>
+            <input type="password" id="password" name="password" placeholder="Пароль" required>
+            <label for="description">Описание (необязательно)</label>
+            <textarea name="description" id="description" placeholder="Описание (необязательно)"></textarea>
+            <label for="avatar">Аватар (необязательно):</label>
+            <input type="file" id="avatar" name="avatar" accept="image/*">
+            <button type="submit">Зарегистрироваться</button>
+        </form>
+        <a href="{{ url_for('login') }}">Уже есть аккаунт? Войти</a>
+    </div>
+</body>
+</html>

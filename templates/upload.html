@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Загрузка видео</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='general.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='upload.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="/">myTube</a>
+    </div>
+    <div class="upload-container">
+        <h2>Загрузить видео</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flashes">
+                    {% for category, message in messages %}
+                        <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        <form method="post" enctype="multipart/form-data" id="upload-form">
+            <div class="drop-area" id="drop-area">
+                <input type="file" id="video-file" name="video" accept="video/*" hidden>
+                <label for="video-file" class="drop-label">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-cloud-upload" viewBox="0 0 16 16">
+                      <path d="M4.406 1.318a4.53 4.53 0 0 1 3.478 1.02L8 1.318l.121-.003a4.52 4.52 0 0 1 3.478-1.02 4.53 4.53 0 0 1 3.478 1.02l.121.003a3.7 3.7 0 0 1 1.02 3.478 3.7 3.7 0 0 1-.021.121.5.5 0 0 1 .157.36.5.5 0 0 1-.157.36l-.12.003a3.7 3.7 0 0 1-1.02 3.478 3.7 3.7 0 0 1-.021.121.5.5 0 0 1 .157.36.5.5 0 0 1-.157.36l-.12.003a4.53 4.53 0 0 1-3.478 1.02 4.53 4.53 0 0 1-3.478-1.02l-.121-.003a3.7 3.7 0 0 1-1.02-3.478 3.7 3.7 0 0 1 .021-.121.5.5 0 0 1-.157-.36.5.5 0 0 1 .157-.36l.12.003a4.53 4.53 0 0 1 3.478-1.02z"/>
+                      <path d="M500.5 10.284a.5.5 0 0 0 .63.047l2 3a.5.5 0 0 0 .325.168.5.5 0 0 0 .325-.168l2-3a.5.5 0 0 0 .63-.047l-.635.564a.5.5 0 0 0 .047.63l-1.94 2.59a.5.5 0 0 0 .316.092.5.5 0 0 0 .316-.092l-1.94-2.59a.5.5 0 0 0 .047-.63l-.635-.564z"/>
+                      <path fill-rule="evenodd" d="M0 14.5a.5.5 0 0 0 .5.5h15a.5.5 0 0 0 0-1H.5a.5.5 0 0 0-.5.5z"/>
+                    </svg>
+                    <p>Выберите файл</p>
+                    <p>или перетащите его сюда</p>
+                </label>
+            </div>
+
+            <div class="upload-info">
+                <input type="text" name="name" placeholder="Название видео" required>
+                <textarea name="description" placeholder="Описание видео" required></textarea>
+                <label for="thumbnail">Выберите обложку:</label>
+                <input type="file" name="thumbnail" accept="image/*" required>
+                <button type="submit">Загрузить</button>
+            </div>
+            <div class="progress-bar">
+                <div class="progress"></div>
+            </div>
+        </form>
+    </div>
+     <script>
+        const dropArea = document.getElementById('drop-area');
+        const videoFile = document.getElementById('video-file');
+        const uploadForm = document.getElementById('upload-form');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false)
+        })
+
+        function preventDefaults (e) {
+            e.preventDefault()
+            e.stopPropagation()
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, highlight, false)
+        })
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, unhighlight, false)
+        })
+
+        function highlight(e) {
+            dropArea.classList.add('highlight')
+        }
+
+        function unhighlight(e) {
+            dropArea.classList.remove('highlight')
+        }
+
+        dropArea.addEventListener('drop', handleDrop, false)
+
+        function handleDrop(e) {
+            let dt = e.dataTransfer
+            let files = dt.files
+
+            handleFiles(files)
+        }
+
+        function handleFiles(files) {
+            videoFile.files = files;
+        }
+        uploadForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+        });
+    </script>
+</body>
+</html>

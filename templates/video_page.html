@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ video.name }} - myTube</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='video_page.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='general.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="/">myTube</a>
+        <div class="auth">
+            {% if user %}
+                <a href="{{ url_for('profile', username=user.username) }}">Профиль</a>
+                <a href="{{ url_for('upload') }}">Загрузить</a>
+                <a href="{{ url_for('logout') }}">Выйти</a>
+            {% else %}
+                <a href="{{ url_for('login') }}">Войти</a>
+                <a href="{{ url_for('register') }}">Зарегистрироваться</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="video-container">
+        <video controls class="video-player">
+            <source src="{{ url_for('static', filename='uploads/' + video.video_file) }}" type="video/mp4">
+        </video>
+        <div class="video-info">
+            <h1 class="video-title">{{ video.name }}</h1>
+            <div class="video-details">
+                <div class="channel-info">
+                    <a href="{{ url_for('profile', username=video.author_username) }}" class="channel-link">@{{ video.author_username }}</a>
+                    {% if user %}
+                        {% if video.author_username != user.username %}
+                        <form action="{{ url_for('subscribe', profile_id=video.author_id) }}" method="post" style="display: inline;">
+                            <button type="submit" class="subscribe-button">Подписаться</button>
+                        </form>
+                        {% endif %}
+                    {% else %}
+                         <a href="{{ url_for('login') }}" class="subscribe-button">Войти чтобы подписаться</a>
+                    {% endif %}
+                </div>
+                 <div class="video-stats">
+                    <span>0 просмотров</span>
+                    <span>{{ video.likes }} лайков</span>
+                    <span>{{ video.dislikes }} дизлайков</span>
+                    <span>{{ video.date_create }}</span>
+                </div>
+                <p class="video-description">{{ video.desc }}</p>
+            </div>
+            <div class="video-actions">
+                <button class="like-button" id="{{ video.id }}" {% if not user %}disabled{% endif %}>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M21,7H12.16667l3.33333-5L14.5,2l-6,9H3v4H21V7Z"></path></svg>
+                </button>
+                <button class="dislike-button" id="{{ video.id }}" {% if not user %}disabled{% endif %}>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M3,17H11.83333l-3.33333,5L9.5,22l6-9H21V10H3V17Z"></path></svg>
+                </button>
+            </div>
+        </div>
+        <div class="comments-section">
+            <h3>Комментарии:</h3>
+            {% if user %}
+                <form action="{{ url_for('add_comment', video_id=video.id) }}" method="post" class="comment-form">
+                    <textarea name="comment" placeholder="Добавьте комментарий"></textarea>
+                    <button type="submit">Отправить</button>
+                </form>
+            {% else %}
+                <p>Авторизуйтесь, чтобы оставлять комментарии.</p>
+            {% endif %}
+            {% for comment in comments %}
+                <div class="comment">
+                    <div class="comment-header">
+                        <span class="comment-author">@{{ comment.username }}</span>
+                        <span class="comment-date">{{ comment.created_at }}</span>
+                    </div>
+                    <p class="comment-text">{{ comment.text }}</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script>
+        const likeBtn = document.querySelector('.like-button');
+        const dislikeBtn = document.querySelector('.dislike-button');
+
+        if (likeBtn) {
+            likeBtn.onclick = async function(event) {
+                await fetch('/' + likeBtn.id.toString() + '/like', {
+                    method: 'POST'
+                });
+                location.reload();
+            }
+        }
+
+        if (dislikeBtn) {
+            dislikeBtn.onclick = async function(event) {
+                await fetch('/' + dislikeBtn.id.toString() + '/dislike', {
+                    method: 'POST'
+                });
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>

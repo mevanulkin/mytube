@@ -1,0 +1,104 @@
+.auth-container-new {
+    width: 400px;
+    margin: 50px auto;
+    padding: 30px;
+    border-radius: 15px;
+    background-color: #fff;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+}
+
+.auth-container-new h2 {
+    text-align: center;
+    margin-bottom: 25px;
+    color: #333;
+    font-weight: 500;
+}
+
+.auth-container-new label {
+    display: block;
+    margin-bottom: 8px;
+    color: #666;
+    font-size: 0.9em;
+}
+
+.auth-container-new input[type="text"],
+.auth-container-new input[type="password"],
+.auth-container-new textarea {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 20px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-sizing: border-box;
+    font-size: 1em;
+    color: #333;
+}
+
+.auth-container-new textarea {
+    resize: vertical;
+    height: 100px;
+}
+
+.auth-container-new input[type="file"] {
+    margin-bottom: 20px;
+}
+
+.auth-container-new button {
+    background-color: #333;
+    color: white;
+    padding: 14px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+    font-size: 1.1em;
+    transition: background-color 0.3s ease;
+}
+
+.auth-container-new button:hover {
+    background-color: #555;
+}
+
+.auth-container-new a {
+    display: block;
+    text-align: center;
+    margin-top: 20px;
+    color: #007bff;
+    text-decoration: none;
+    font-size: 0.9em;
+}
+
+.auth-container-new a:hover {
+    text-decoration: underline;
+}
+
+.flashes {
+    margin-bottom: 20px;
+}
+
+.flash {
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.flash-success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.flash-error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.flash-info {
+    background-color: #cce5ff;
+    color: #004085;
+    border: 1px solid #b8daff;
+}
+
+.auth-container {
+    display: none;
+}

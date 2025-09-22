@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>myTube</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='general.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <a href="/" class="logo">myTube</a>
+             <div class="search-container">
+                <form action="/search" method="get">
+                    <input type="text" name="q" placeholder="Поиск видео">
+                    <button type="submit">Найти</button>
+                </form>
+            </div>
+            <div class="auth">
+                {% if session.user_id %}
+                    <a href="{{ url_for('profile', username=db.get_user(session.user_id)['username']) }}" class="button">Профиль</a>
+                    <a href="{{ url_for('upload') }}" class="button">Загрузить</a>
+                    <a href="{{ url_for('logout') }}" class="button">Выйти</a>
+                {% else %}
+                    <a href="{{ url_for('login') }}" class="button">Войти</a>
+                    <a href="{{ url_for('register') }}" class="button">Зарегистрироваться</a>
+                {% endif %}
+            </div>
+        </header>
+        <main class="main-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flashes">
+                        {% for category, message in messages %}
+                            <div class="flash flash-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            <div class="videos">
+                {% for video in videos %}
+                    <div class="video-card">
+                        <a href="/{{ video.id|string }}">
+                            <img src="{{ url_for('static', filename='uploads/' + video.thumbnail) }}" alt="{{ video.name }}" class="video-thumbnail">
+                            <h2 class="video-title">{{ video.name }}</h2>
+                            <p class="video-author">by {{ video.author_username }}</p>
+                        </a>
+                    </div>
+                {% endfor %}
+            </div>
+        </main>
+        <footer class="footer">
+            <p>&copy; 2025 myTube.</p>
+        </footer>
+    </div>
+</body>
+</html>

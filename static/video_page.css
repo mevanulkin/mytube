@@ -1,0 +1,147 @@
+.video-container {
+    width: 80%;
+    margin: 20px auto;
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.video-player {
+    width: 100%;
+    border-radius: 10px;
+}
+
+.video-info {
+    padding: 20px;
+}
+
+.video-title {
+    font-size: 1.5em;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.video-details {
+    color: #555;
+}
+
+.channel-info {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.channel-link {
+    text-decoration: none;
+    color: #007bff;
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.subscribe-button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.video-stats {
+    margin-bottom: 10px;
+    font-size: 0.9em;
+}
+
+.video-description {
+    font-size: 1em;
+    color: #777;
+    line-height: 1.5;
+}
+
+.video-actions {
+    margin-top: 20px;
+    display: flex;
+}
+
+.like-button, .dislike-button {
+    background-color: transparent;
+    border: none;
+    color: #666;
+    padding: 10px 20px;
+    font-size: 1em;
+    cursor: pointer;
+    margin-right: 10px;
+    transition: color 0.3s;
+}
+
+.like-button:hover, .dislike-button:hover {
+    color: #007bff;
+}
+
+.comments-section {
+    padding: 20px;
+    background-color: #f9f9f9;
+    border-top: 1px solid #ddd;
+}
+
+.comments-section h3 {
+    margin-bottom: 15px;
+    color: #444;
+}
+
+.comment {
+    border-bottom: 1px solid #eee;
+    padding-bottom: 15px;
+    margin-bottom: 15px;
+}
+
+.comment-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.comment-author {
+    font-weight: bold;
+    color: #333;
+}
+
+.comment-date {
+    color: #777;
+    font-size: 0.8em;
+}
+
+.comment-text {
+    color: #555;
+    font-size: 1em;
+    line-height: 1.4;
+}
+
+.comment-form {
+    margin-bottom: 20px;
+}
+
+.comment-form textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    box-sizing: border-box;
+    resize: vertical;
+    margin-bottom: 10px;
+}
+
+.comment-form button {
+    background-color: #007bff;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.comment-form button:hover {
+    background-color: #0056b3;
+}

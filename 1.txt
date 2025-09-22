@@ -1,0 +1,1217 @@
+у меня есть код сайта myTube - шуточного аналога YouTube на Flask
+опиши на русском, что делает этот код, не переписывая его
+
+
+app.py
+import flask
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+import os
+import secrets
+from functools import wraps
+from databaser import Databaser
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__)
+app.secret_key = secrets.token_hex(16)
+
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'png', 'jpg', 'jpeg'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
+
+db = Databaser()
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+@app.route('/')
+def root():
+    videos = db.get_videos()
+    return render_template('index.html', videos=videos, db=db) # pass db to the template
+
+
+@app.route('/<video_id>')
+def video_page(video_id):
+    video = db.get_video(video_id)
+
+    if video is None:
+        return 'Видео не найдено'
+
+    user_id = session.get('user_id')
+    if user_id:
+        user = db.get_user(user_id)
+    else:
+        user = None
+
+    comments = db.get_comments(video_id)
+
+    return render_template('video_page.html', video=video, user=user, comments=comments)
+
+
+@app.route('/<video_id>/like', methods=['POST'])
+@login_required
+def like_video(video_id):
+    video_id = int(video_id)
+    user_id = session['user_id']
+    db.like_video(video_id, user_id)
+    return 'ok'
+
+
+@app.route('/<video_id>/dislike', methods=['POST'])
+@login_required
+def dislike_video(video_id):
+    video_id = int(video_id)
+    user_id = session['user_id']
+    db.dislike_video(video_id, user_id)
+    return 'ok'
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        name = request.form['name']
+        username = request.form['username']
+        password = request.form['password']
+        description = request.form['description']
+
+        avatar = request.files['avatar'] if 'avatar' in request.files else None
+        avatar_filename = None
+
+        if len(password) < 7:
+            flash('Пароль должен содержать не менее 7 символов.', 'error')
+            return render_template('register.html')
+        if not any(c.isupper() for c in password):
+            flash('Пароль должен содержать хотя бы одну заглавную букву.', 'error')
+            return render_template('register.html')
+        if not any(c.isdigit() for c in password):
+            flash('Пароль должен содержать хотя бы одну цифру.', 'error')
+            return render_template('register.html')
+
+        if db.get_user_by_username(username):
+            flash('Имя пользователя уже занято.', 'error')
+            return render_template('register.html')
+
+        if avatar and avatar.filename != '':
+            if allowed_file(avatar.filename):
+                avatar_filename = secure_filename(avatar.filename)
+                avatar.save(os.path.join(app.config['UPLOAD_FOLDER'], avatar_filename))
+            else:
+                flash('Недопустимый формат аватара.', 'error')
+                return render_template('register.html')
+
+        user_id = db.add_user(name, username, password, description, avatar_filename)
+        session['user_id'] = user_id
+        flash('Регистрация прошла успешно!', 'success')
+        return redirect(url_for('root'))
+
+    return render_template('register.html')
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        user = db.get_user_by_username(username)
+
+        if user and db.verify_password(password, user['password']):
+            session['user_id'] = user['id']
+            flash('Вы успешно вошли!', 'success')
+            return redirect(url_for('root'))
+        else:
+            flash('Неверное имя пользователя или пароль.', 'error')
+            return render_template('login.html')
+
+    return render_template('login.html')
+
+
+@app.route('/logout')
+@login_required
+def logout():
+    session.pop('user_id', None)
+    flash('Вы вышли из системы.', 'info')
+    return redirect(url_for('root'))
+
+
+@app.route('/upload', methods=['GET', 'POST'])
+@login_required
+def upload():
+    if request.method == 'POST':
+        name = request.form['name']
+        description = request.form['description']
+        video_file = request.files['video']
+        thumbnail = request.files['thumbnail']
+        author_id = session['user_id']
+
+        if not all([name, description, video_file, thumbnail]):
+            flash('Пожалуйста, заполните все поля.', 'error')
+            return render_template('upload.html')
+
+        if video_file and allowed_file(video_file.filename) and thumbnail and allowed_file(thumbnail.filename):
+            video_filename = secure_filename(video_file.filename)
+            thumbnail_filename = secure_filename(thumbnail.filename)
+
+            video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
+            thumbnail_path = os.path.join(app.config['UPLOAD_FOLDER'], thumbnail_filename)
+
+            video_file.save(video_path)
+            thumbnail.save(thumbnail_path)
+
+            db.add_video(name, description, video_filename, thumbnail_filename, author_id)
+            flash('Видео успешно загружено!', 'success')
+            return redirect(url_for('root'))
+        else:
+            flash('Недопустимый формат файла.', 'error')
+            return render_template('upload.html')
+
+    return render_template('upload.html')
+
+
+@app.route('/profile/<username>')
+def profile(username):
+    user = db.get_user_by_username(username)
+
+    if not user:
+        return 'Пользователь не найден'
+
+    videos = db.get_videos_by_user(user['id'])
+    subscriber_count = db.get_subscriber_count(user['id'])
+
+    is_subscribed = False
+    if 'user_id' in session:
+        is_subscribed = db.is_subscribed(session['user_id'], user['id'])
+
+    return render_template('profile.html', user=user, videos=videos, subscriber_count=subscriber_count, is_subscribed=is_subscribed, db=db) # pass db to the template
+
+
+@app.route('/subscribe/<profile_id>', methods=['POST'])
+@login_required
+def subscribe(profile_id):
+    user_id = session['user_id']
+    profile_id = int(profile_id)
+
+    db.subscribe_user(user_id, profile_id)
+    return redirect(url_for('profile', username=db.get_user(profile_id)['username']))
+
+
+@app.route('/unsubscribe/<profile_id>', methods=['POST'])
+@login_required
+def unsubscribe(profile_id):
+    user_id = session['user_id']
+    profile_id = int(profile_id)
+
+    db.unsubscribe_user(user_id, profile_id)
+    return redirect(url_for('profile', username=db.get_user(profile_id)['username']))
+
+
+@app.route('/comment/<video_id>', methods=['POST'])
+@login_required
+def add_comment(video_id):
+    video_id = int(video_id)
+    user_id = session['user_id']
+    text = request.form['comment']
+
+    if text:
+        db.add_comment(video_id, user_id, text)
+
+    return redirect(url_for('video_page', video_id=video_id))
+
+
+if __name__ == '__main__':
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    app.run(debug=True)
+
+
+
+
+
+databaser.py
+
+import sqlite3
+from werkzeug.security import generate_password_hash, check_password_hash
+
+
+class Databaser:
+
+    def __init__(self, db_name='database.db'):
+        self.connection = sqlite3.connect(db_name, check_same_thread=False)
+        self.connection.row_factory = sqlite3.Row
+        self.cursor = self.connection.cursor()
+
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                description TEXT,
+                avatar TEXT
+            )
+        ''')
+
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS videos (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name TEXT NOT NULL,
+                            desc TEXT NOT NULL,
+                            video_file TEXT NOT NULL,
+                            thumbnail TEXT NOT NULL,
+                            author_id INTEGER NOT NULL,
+                            likes INTEGER DEFAULT 0,
+                            dislikes INTEGER DEFAULT 0,
+                            FOREIGN KEY (author_id) REFERENCES users (id)
+                            )''')
+
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS likes (
+                user_id INTEGER NOT NULL,
+                video_id INTEGER NOT NULL,
+                like_type INTEGER NOT NULL,
+                PRIMARY KEY (user_id, video_id),
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (video_id) REFERENCES videos (id)
+            )
+        ''')
+
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS subscribers (
+                subscriber_id INTEGER NOT NULL,
+                profile_id INTEGER NOT NULL,
+                PRIMARY KEY (subscriber_id, profile_id),
+                FOREIGN KEY (subscriber_id) REFERENCES users (id),
+                FOREIGN KEY (profile_id) REFERENCES users (id)
+            )
+        ''')
+
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (video_id) REFERENCES videos (id),
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+
+        self.connection.commit()
+
+    def add_user(self, name, username, password, description=None, avatar=None):
+        hashed_password = generate_password_hash(password)
+        self.cursor.execute('''
+            INSERT INTO users (name, username, password, description, avatar)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (name, username, hashed_password, description, avatar))
+        self.connection.commit()
+        return self.cursor.lastrowid
+
+    def get_user(self, user_id):
+        self.cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+        r = self.cursor.fetchone()
+        if not r:
+            return None
+        return dict(r)
+
+    def get_user_by_username(self, username):
+        self.cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
+        r = self.cursor.fetchone()
+        if not r:
+            return None
+        return dict(r)
+
+    def verify_password(self, password, hashed_password):
+        return check_password_hash(hashed_password, password)
+
+    def add_video(self, name, desc, video_file, thumbnail, author_id):
+        self.cursor.execute('''
+            INSERT INTO videos (name, desc, video_file, thumbnail, author_id)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (name, desc, video_file, thumbnail, author_id))
+        self.connection.commit()
+
+    def get_video(self, video_id):
+        self.cursor.execute('SELECT videos.*, users.username AS author_username FROM videos JOIN users ON videos.author_id = users.id WHERE videos.id = ?', (video_id,))
+        r = self.cursor.fetchone()
+
+        if not r:
+            return
+
+        return dict(r)
+
+    def get_videos_by_user(self, user_id):
+        self.cursor.execute('SELECT * FROM videos WHERE author_id = ?', (user_id,))
+        videos = self.cursor.fetchall()
+        return list(map(dict, videos))
+
+    def get_videos(self):
+        self.cursor.execute('SELECT videos.*, users.username AS author_username FROM videos JOIN users ON videos.author_id = users.id')
+        videos = self.cursor.fetchall()
+
+        videos = list(map(dict, videos))
+        videos.sort(key=lambda x: x['likes'] - x['dislikes'], reverse=True)
+
+        return videos
+
+    def like_video(self, video_id, user_id):
+        self.cursor.execute('SELECT like_type FROM likes WHERE user_id = ? AND video_id = ?', (user_id, video_id))
+        existing_like = self.cursor.fetchone()
+
+        if existing_like:
+            like_type = existing_like[0]
+            if like_type == 1:
+                self.cursor.execute('DELETE FROM likes WHERE user_id = ? AND video_id = ?', (user_id, video_id))
+                self.cursor.execute('UPDATE videos SET likes = likes - 1 WHERE id = ?', (video_id,))
+            else:
+                self.cursor.execute('UPDATE likes SET like_type = 1 WHERE user_id = ? AND video_id = ?', (user_id, video_id))
+                self.cursor.execute('UPDATE videos SET likes = likes + 1, dislikes = dislikes - 1 WHERE id = ?', (video_id,))
+        else:
+            self.cursor.execute('INSERT INTO likes (user_id, video_id, like_type) VALUES (?, ?, 1)', (user_id, video_id))
+            self.cursor.execute('UPDATE videos SET likes = likes + 1 WHERE id = ?', (video_id,))
+
+        self.connection.commit()
+
+    def dislike_video(self, video_id, user_id):
+        self.cursor.execute('SELECT like_type FROM likes WHERE user_id = ? AND video_id = ?', (user_id, video_id))
+        existing_like = self.cursor.fetchone()
+
+        if existing_like:
+            like_type = existing_like[0]
+            if like_type == -1:
+                self.cursor.execute('DELETE FROM likes WHERE user_id = ? AND video_id = ?', (user_id, video_id))
+                self.cursor.execute('UPDATE videos SET dislikes = dislikes - 1 WHERE id = ?', (video_id,))
+            else:
+                self.cursor.execute('UPDATE likes SET like_type = -1 WHERE user_id = ? AND video_id = ?', (user_id, video_id))
+                self.cursor.execute('UPDATE videos SET dislikes = dislikes + 1, likes = likes - 1 WHERE id = ?', (video_id,))
+        else:
+            self.cursor.execute('INSERT INTO likes (user_id, video_id, like_type) VALUES (?, ?, -1)', (user_id, video_id))
+            self.cursor.execute('UPDATE videos SET dislikes = dislikes + 1 WHERE id = ?', (video_id,))
+
+        self.connection.commit()
+
+    def subscribe_user(self, subscriber_id, profile_id):
+        self.cursor.execute('INSERT INTO subscribers (subscriber_id, profile_id) VALUES (?, ?)',
+                            (subscriber_id, profile_id))
+        self.connection.commit()
+
+    def unsubscribe_user(self, subscriber_id, profile_id):
+        self.cursor.execute('DELETE FROM subscribers WHERE subscriber_id = ? AND profile_id = ?',
+                            (subscriber_id, profile_id))
+        self.connection.commit()
+
+    def is_subscribed(self, subscriber_id, profile_id):
+        self.cursor.execute('SELECT 1 FROM subscribers WHERE subscriber_id = ? AND profile_id = ?',
+                            (subscriber_id, profile_id))
+        return self.cursor.fetchone() is not None
+
+    def get_subscriber_count(self, profile_id):
+        self.cursor.execute('SELECT COUNT(*) FROM subscribers WHERE profile_id = ?', (profile_id,))
+        return self.cursor.fetchone()[0]
+
+    def add_comment(self, video_id, user_id, text):
+        self.cursor.execute('''
+            INSERT INTO comments (video_id, user_id, text)
+            VALUES (?, ?, ?)
+        ''', (video_id, user_id, text))
+        self.connection.commit()
+
+    def get_comments(self, video_id):
+        self.cursor.execute('''
+            SELECT comments.*, users.username FROM comments
+            JOIN users ON comments.user_id = users.id
+            WHERE video_id = ?
+            ORDER BY created_at DESC
+        ''', (video_id,))
+        comments = self.cursor.fetchall()
+        return list(map(dict, comments))
+
+
+if __name__ == '__main__':
+    db = Databaser()
+
+
+
+
+
+templates/index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>myTube</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='general.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="/">myTube</a>
+        <div class="auth">
+            {% if session.user_id %}
+                <a href="{{ url_for('profile', username=db.get_user(session.user_id)['username']) }}">Профиль</a>
+                <a href="{{ url_for('upload') }}">Загрузить</a>
+                <a href="{{ url_for('logout') }}">Выйти</a>
+            {% else %}
+                <a href="{{ url_for('login') }}">Войти</a>
+                <a href="{{ url_for('register') }}">Зарегистрироваться</a>
+            {% endif %}
+        </div>
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flashes">
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+    <div class="videos">
+        {% for video in videos %}
+        <div class="video">
+            <a href="/{{ video.id|string }}">
+                <img src="{{ url_for('static', filename='uploads/' + video.thumbnail) }}" alt="">
+                <h2 class="name">{{ video.name }}</h2>
+                <p class="author_name">{{ video.author_username }}</p>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+templates/video_page.html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>myTube</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='video_page.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='general.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="/">myTube</a>
+        <div class="auth">
+            {% if user %}
+                <a href="{{ url_for('profile', username=user.username) }}">Профиль</a>
+                <a href="{{ url_for('upload') }}">Загрузить</a>
+                <a href="{{ url_for('logout') }}">Выйти</a>
+            {% else %}
+                <a href="{{ url_for('login') }}">Войти</a>
+                <a href="{{ url_for('register') }}">Зарегистрироваться</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="video_block">
+        <video controls>
+            <source src="{{ url_for('static', filename='uploads/' + video.video_file) }}" type="video/mp4">
+        </video>
+
+        <div class="actions">
+            <div class="like">
+                <button class="like_btn" id="{{ video.id }}" {% if not user %}disabled{% endif %}>
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#5f6368"><path d="M840-640q32 0 56 24t24 56v80q0 7-2 15t-4 15L794-168q-9 20-30 34t-44 14H280v-520l240-238q15-15 35.5-17.5T595-888q19 10 28 28t4 37l-45 183h258Zm-480 34v406h360l120-280v-80H480l54-220-174 174ZM160-120q-33 0-56.5-23.5T80-200v-360q0-33 23.5-56.5T160-640h120v80H160v360h120v80H160Zm200-80v-406 406Z"/></svg>
+                    <p id="like-count">{{ video.likes }}</p>
+                </button>
+            </div>
+            <div class="dislike">
+                <button class="dislike_btn" id="{{ video.id }}" {% if not user %}disabled{% endif %}>
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#5f6368"><path d="M120-320q-32 0-56-24t-24-56v-80q0-7 2-15t4-15l120-282q9-20 30-34t44-14h440v520L440-82q-15 15-35.5 17.5T365-72q-19-10-28-28t-4-37l45-183H120Zm480-34v-406H240L120-480v80h360l-54 220 174-174Zm200-486q33 0 56.5 23.5T880-760v360q0 33-23.5 56.5T800-320H680v-80h120v-360H680v-80h120Zm-200 80v406-406Z"/></svg>
+                    <p id="dislike-count">{{ video.dislikes }}</p>
+                </button>
+            </div>
+        </div>
+        <h1 class="name">{{ video.name }}</h1>
+        <p class="desc">{{ video.desc }}</p>
+        <a href="{{ url_for('profile', username=video.author_username) }}" class="author_name">{{ video.author_username }}</a>
+
+        <div class="comments">
+            <h3>Комментарии:</h3>
+            {% if user %}
+                <form action="{{ url_for('add_comment', video_id=video.id) }}" method="post" class="comment-form">
+                    <textarea name="comment" placeholder="Добавьте комментарий"></textarea>
+                    <button type="submit">Отправить</button>
+                </form>
+            {% else %}
+                <p>Авторизуйтесь, чтобы оставлять комментарии.</p>
+            {% endif %}
+
+            {% for comment in comments %}
+                <div class="comment">
+                    <p class="comment-author">{{ comment.username }}:</p>
+                    <p class="comment-text">{{ comment.text }}</p>
+                    <p class="comment-date">{{ comment.created_at }}</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+    <script>
+        const likeBtn = document.querySelector('.like_btn');
+        const dislikeBtn = document.querySelector('.dislike_btn');
+        const likeCount = document.getElementById('like-count');
+        const dislikeCount = document.getElementById('dislike-count');
+
+        if (likeBtn) {
+            likeBtn.onclick = async function(event) {
+                await fetch('/' + likeBtn.id.toString() + '/like', {
+                    method: 'POST'
+                });
+                fetch(`/${likeBtn.id.toString()}`)
+                    .then(response => response.text())
+                    .then(data => {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = data;
+                        const updatedLikeCount = tempDiv.querySelector('#like-count').innerText;
+                        const updatedDislikeCount = tempDiv.querySelector('#dislike-count').innerText;
+                        likeCount.innerText = updatedLikeCount;
+                        dislikeCount.innerText = updatedDislikeCount;
+                    });
+            }
+        }
+
+        if (dislikeBtn) {
+            dislikeBtn.onclick = async function(event) {
+                await fetch('/' + dislikeBtn.id.toString() + '/dislike', {
+                    method: 'POST'
+                });
+                fetch(`/${dislikeBtn.id.toString()}`)
+                    .then(response => response.text())
+                    .then(data => {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = data;
+                        const updatedLikeCount = tempDiv.querySelector('#like-count').innerText;
+                        const updatedDislikeCount = tempDiv.querySelector('#dislike-count').innerText;
+                        likeCount.innerText = updatedLikeCount;
+                        dislikeCount.innerText = updatedDislikeCount;
+                    });
+            }
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+static/general.css
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
+
+• {
+    margin: 0;
+    padding: 0;
+    font-family: "Roboto", sans-serif;
+}
+
+.header {
+    padding: 3vh;
+    padding-bottom: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header a {
+    color: red;
+    text-decoration: none;
+    font-weight: 400;
+}
+
+.header .auth a {
+    margin-left: 15px;
+    color: #333;
+}
+
+.header .auth a:hover {
+    text-decoration: underline;
+}
+
+
+
+
+
+static/index.css
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
+
+• {
+    margin: 0;
+    padding: 0;
+    font-family: "Roboto", sans-serif;
+}
+
+.videos {
+    padding: 5vh;
+    display: flex;
+}
+
+.video {
+    width: 24vw;
+    margin-right: 1vh;
+    transition: transform 0.3s ease;
+}
+
+.video:hover {
+    transform: scale(1.05);
+}
+
+.video a {
+    text-decoration: none;
+    color: #000;
+    margin-top: .5vh;
+}
+
+.video a h2 {
+    text-decoration: none;
+    color: #000;
+    margin-top: .5vh;
+}
+
+.video a p {
+    text-decoration: none;
+    color: #9e9e9e;
+}
+
+.video a img {
+    width: 100%;
+    border-radius: 1vh;
+}
+
+
+
+
+
+static/video_page.css
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
+
+• {
+    margin: 0;
+    padding: 0;
+    font-family: "Roboto", sans-serif;
+}
+
+.video_block {
+    padding: 7vh 20vw 0;
+}
+
+video {
+    width: 60vw;
+    border-radius: 1vh;
+}
+
+.actions {
+    display: flex;
+    margin-top: 2vh;
+}
+
+.like_btn, .dislike_btn {
+    background-color: transparent;
+    border: none;
+    padding: .75vh .9vh;
+    font-size: 1.3em;
+    margin-right: .5vh;
+    border-radius: 2vh;
+    display: flex;
+    background-color: #eeeeee;
+    cursor: pointer;
+    transition: .3s;
+}
+
+.like_btn:hover, .dislike_btn:hover {
+    background-color: #d3d3d3;
+}
+
+.like_btn p, .dislike_btn p {
+    margin-left: .5vh;
+}
+
+.name {
+    margin-top: 1vh;
+}
+
+.desc {
+    margin-top: .7vh;
+}
+
+.author_name {
+    margin-top: 1vh;
+    color: #5e5e5e;
+    text-decoration: none;
+}
+
+.comments {
+    margin-top: 20px;
+}
+
+.comment {
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+.comment-author {
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.comment-date {
+    color: #777;
+    font-size: 0.8em;
+}
+
+.comment-form {
+    margin-bottom: 15px;
+}
+
+.comment-form textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+    resize: vertical;
+    margin-bottom: 10px;
+}
+
+.comment-form button {
+    background-color: #007bff;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.comment-form button:hover {
+    background-color: #0056b3;
+}
+
+
+
+
+
+templates/login.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='general.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="/">myTube</a>
+    </div>
+    <div class="auth-container">
+        <h2>Вход</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flashes">
+                    {% for category, message in messages %}
+                        <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        <form method="post">
+            <input type="text" name="username" placeholder="Имя пользователя" required>
+            <input type="password" name="password" placeholder="Пароль" required>
+            <button type="submit">Войти</button>
+            <a href="{{ url_for('register') }}">Нет аккаунта? Зарегистрироваться</a>
+        </form>
+    </div>
+</body>
+</html>
+
+
+
+
+templates/profile.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ user.username }} - Профиль</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='general.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='profile.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="/">myTube</a>
+        <div class="auth">
+            {% if session.user_id %}
+                <a href="{{ url_for('profile', username=db.get_user(session.user_id)['username']) }}">Профиль</a>
+                <a href="{{ url_for('upload') }}">Загрузить</a>
+                <a href="{{ url_for('logout') }}">Выйти</a>
+            {% else %}
+                <a href="{{ url_for('login') }}">Войти</a>
+                <a href="{{ url_for('register') }}">Зарегистрироваться</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="profile-container">
+        <div class="profile-header">
+            {% if user.avatar %}
+                <img src="{{ url_for('static', filename='uploads/' + user.avatar) }}" alt="Аватар" class="avatar">
+            {% else %}
+                <img src="{{ url_for('static', filename='default_avatar.png') }}" alt="Аватар" class="avatar">
+            {% endif %}
+            <h1>{{ user.name }}</h1>
+            <p class="username">@{{ user.username }}</p>
+            <p class="description">{{ user.description }}</p>
+            <p>Подписчиков: {{ subscriber_count }}</p>
+
+            {% if session.user_id and session.user_id != user.id %}
+                {% if is_subscribed %}
+                    <form action="{{ url_for('unsubscribe', profile_id=user.id) }}" method="post">
+                        <button type="submit">Отписаться</button>
+                    </form>
+                {% else %}
+                    <form action="{{ url_for('subscribe', profile_id=user.id) }}" method="post">
+                        <button type="submit">Подписаться</button>
+                    </form>
+                {% endif %}
+            {% endif %}
+        </div>
+
+        <div class="profile-videos">
+            <h2>Видео пользователя</h2>
+            {% if videos %}
+                <div class="videos">
+                    {% for video in videos %}
+                        <div class="video">
+                            <a href="/{{ video.id|string }}">
+                                <img src="{{ url_for('static', filename='uploads/' + video.thumbnail) }}" alt="">
+                                <h2 class="name">{{ video.name }}</h2>
+                            </a>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p>У пользователя пока нет видео.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+
+templates/register.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Регистрация</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='general.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="/">myTube</a>
+    </div>
+    <div class="auth-container">
+        <h2>Регистрация</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flashes">
+                    {% for category, message in messages %}
+                        <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        <form method="post" enctype="multipart/form-data">
+            <input type="text" name="name" placeholder="Имя" required>
+            <input type="text" name="username" placeholder="Имя пользователя" required>
+            <input type="password" name="password" placeholder="Пароль" required>
+            <textarea name="description" placeholder="Описание (необязательно)"></textarea>
+            <label for="avatar">Аватар (необязательно):</label>
+            <input type="file" name="avatar" accept="image/*">
+            <button type="submit">Зарегистрироваться</button>
+            <a href="{{ url_for('login') }}">Уже есть аккаунт? Войти</a>
+        </form>
+    </div>
+</body>
+</html>
+
+
+
+
+
+templates/upload.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Загрузка видео</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='general.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='upload.css') }}">
+</head>
+<body>
+    <div class="header">
+        <a href="/">myTube</a>
+    </div>
+    <div class="upload-container">
+        <h2>Загрузить видео</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flashes">
+                    {% for category, message in messages %}
+                        <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        <form method="post" enctype="multipart/form-data">
+            <input type="text" name="name" placeholder="Название видео" required>
+            <textarea name="description" placeholder="Описание видео" required></textarea>
+            <label for="video">Выберите видео:</label>
+            <input type="file" name="video" accept="video/*" required>
+            <label for="thumbnail">Выберите обложку:</label>
+            <input type="file" name="thumbnail" accept="image/*" required>
+            <button type="submit">Загрузить</button>
+        </form>
+    </div>
+</body>
+</html>
+
+
+
+
+
+static/auth.css
+.auth-container {
+    width: 400px;
+    margin: 50px auto;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.auth-container h2 {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.auth-container input[type="text"],
+.auth-container input[type="password"],
+.auth-container textarea {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.auth-container textarea {
+    resize: vertical;
+}
+
+.auth-container input[type="file"] {
+    margin-bottom: 15px;
+}
+
+.auth-container button {
+    background-color: #4CAF50;
+    color: white;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+}
+
+.auth-container button:hover {
+    background-color: #45a049;
+}
+
+.auth-container a {
+    display: block;
+    text-align: center;
+    margin-top: 15px;
+    color: #007bff;
+    text-decoration: none;
+}
+
+.auth-container a:hover {
+    text-decoration: underline;
+}
+
+.flashes {
+    margin-bottom: 20px;
+}
+
+.flash {
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.flash-success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.flash-error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.flash-info {
+    background-color: #cce5ff;
+    color: #004085;
+    border: 1px solid #b8daff;
+}
+
+
+
+
+static/profile.css
+.profile-container {
+    width: 800px;
+    margin: 50px auto;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.profile-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.avatar {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 10px;
+}
+
+.username {
+    color: #777;
+    margin-bottom: 10px;
+}
+
+.description {
+    margin-bottom: 15px;
+}
+
+.profile-videos h2 {
+    margin-bottom: 15px;
+}
+
+.videos {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+.video {
+    width: 200px;
+    margin: 10px;
+    text-align: center;
+}
+
+.video img {
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 5px;
+    margin-bottom: 5px;
+}
+
+.video a {
+    text-decoration: none;
+    color: #333;
+}
+
+.video a:hover {
+    color: #007bff;
+}
+
+
+
+
+
+static/upload.css
+.upload-container {
+    width: 600px;
+    margin: 50px auto;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.upload-container h2 {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.upload-container input[type="text"],
+.upload-container textarea {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.upload-container textarea {
+    resize: vertical;
+}
+
+.upload-container input[type="file"] {
+    margin-bottom: 15px;
+}
+
+.upload-container button {
+    background-color: #007bff;
+    color: white;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+}
+
+.upload-container button:hover {
+    background-color: #0056b3;
+}
+
+.upload-container label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
